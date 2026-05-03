@@ -81,12 +81,31 @@ class ScoringEngine:
 
     def _check_sender_authentication(self, headers: dict):
         """
-        Check SPF and DKIM authentication via Gmail's Authentication-Results header.
-        Max points: 30
+        Check if sender authentication (SPF/DKIM) passed.
+
+        Parses Gmail's authentication_results header to determine if the sender's
+        domain has valid SPF records and DKIM signatures.
+
+        Args:
+            headers (dict): Email headers, expected to contain 'authentication_results'
+
+        Scoring:
+            +30 points if SPF fails or DKIM fails/none
+
+        Edge Cases:
+            - Missing headers dict: Treat as fail (suspicious)
+            - Missing authentication_results: Treat as fail (suspicious)
+            - Empty authentication_results: Treat as fail (suspicious)
         """
         auth_results = headers.get("authentication_results", "").lower()
 
-        # Check for SPF or DKIM failure
+        # Edge case: No authentication header = suspicious
+        if not auth_results:
+            self.score += WEIGHTS["sender_authentication"]
+            self.explanations.append(EXPLANATIONS["sender_auth_fail"])
+            return
+
+        # Check for explicit failures
         if "spf=fail" in auth_results or "dkim=fail" in auth_results or "dkim=none" in auth_results:
             self.score += WEIGHTS["sender_authentication"]
             self.explanations.append(EXPLANATIONS["sender_auth_fail"])
