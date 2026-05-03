@@ -5,6 +5,7 @@ Privacy-first email security analysis API
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 from app.models import EmailAnalysisRequest, EmailAnalysisResponse
 from app.scoring_engine import ScoringEngine
 
@@ -42,25 +43,19 @@ async def analyze_email(request: EmailAnalysisRequest):
 
     Privacy Note: This endpoint does NOT log email content.
     All analysis is performed in-memory and discarded after response.
-
-    Args:
-        request (EmailAnalysisRequest): Email data including sender, subject, body, attachments
-
-    Returns:
-        EmailAnalysisResponse: Analysis results with score (0-100), risk level, and explanations
-
-    Raises:
-        HTTPException: 400 if validation fails, 500 if analysis error
     """
     try:
-        # PRIVACY: Never log email content - only metadata for debugging
-        # NO: logger.info(f"Analyzing email: {request.subject}")
-        # YES: logger.info("Email analysis request received")
+        # Validate that we have at least some data to analyze
+        if not any([request.sender, request.subject, request.body_html, request.body_text]):
+            raise HTTPException(
+                status_code=400,
+                detail="Email must contain at least sender, subject, or body content"
+            )
 
         engine = ScoringEngine()
         score, risk_level, explanations = engine.analyze(
-            sender=request.sender or "",  # Handle None/empty sender
-            subject=request.subject or "",  # Handle None/empty subject
+            sender=request.sender or "",
+            subject=request.subject or "",
             body_html=request.body_html or "",
             body_text=request.body_text or "",
             attachment_extensions=request.attachment_extensions or [],
@@ -76,6 +71,12 @@ async def analyze_email(request: EmailAnalysisRequest):
             explanations=explanations
         )
 
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
-        # PRIVACY: Log error type, NOT email content
-        raise HTTPException(status_code=500, detail=f"Analysis error: {str(type(e).__name__)}")
+        # Log error type for debugging (never log email content!)
+        logging.error(f"Analysis error: {type(e).__name__}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error during analysis"
+        )
