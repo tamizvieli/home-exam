@@ -5,7 +5,7 @@ Philosophy: Privacy-first, static analysis only.
 """
 
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from bs4 import BeautifulSoup
 from app.config import (
     WEIGHTS,
@@ -14,25 +14,20 @@ from app.config import (
     URL_SHORTENERS,
     SOCIAL_ENGINEERING_KEYWORDS,
     URGENCY_KEYWORDS,
-    URGENCY_PATTERNS,  # New import
+    URGENCY_PATTERNS,
     THRESHOLDS,
     VERDICTS,
     EXPLANATIONS,
 )
-from app.text_normalizer import TextNormalizer  # New import
+from app.text_normalizer import TextNormalizer
 
 
 class ScoringEngine:
-    """
-    Deterministic rules engine for email maliciousness scoring.
-    Each method returns (points_added, explanation_or_none).
-    """
-
-    def __init__(self):
-        self.score = 0
-        self.explanations = []
-        self.urgency_detected = False  # Track for combo rule
-        self.normalizer = TextNormalizer()  # New: Text normalization
+    def __init__(self) -> None:
+        self.score: int = 0
+        self.explanations: List[str] = []
+        self.urgency_detected: bool = False
+        self.normalizer = TextNormalizer()
 
     def analyze(
             self,
@@ -41,13 +36,21 @@ class ScoringEngine:
             body_html: str,
             body_text: str,
             attachment_extensions: List[str],
-            headers: dict,
+            headers: Dict[str, str]
     ) -> Tuple[int, str, List[str]]:
         """
         Main analysis entry point. Runs all rule checks and returns final verdict.
 
+        Args:
+            sender: Email sender address
+            subject: Email subject line
+            body_html: Email body in HTML format
+            body_text: Email body in plain text
+            attachment_extensions: List of file extensions
+            headers: Email headers dict
+
         Returns:
-            (score, risk_level, explanations)
+            Tuple of (score, risk_level, explanations)
         """
         self.score = 0
         self.explanations = []
@@ -113,7 +116,15 @@ class ScoringEngine:
     def _check_domain_spoofing(self, sender: str):
         """
         Check for bad TLDs and free email providers.
-        Max points: 40 (bad TLD) + 20 (free provider)
+
+        Args:
+            sender (str): Email sender address
+
+        Scoring:
+            +40 points for bad TLD (.tk, .xyz, etc.)
+            +20 points for free email provider (gmail.com, yahoo.com, etc.)
+
+        Max points: 60 (bad TLD + free provider)
         """
         sender_lower = sender.lower()
 
@@ -132,10 +143,18 @@ class ScoringEngine:
 
     def _check_link_manipulation(self, body_html: str):
         """
-        Extract links from HTML and check for:
-        1. URL mismatch (display text != href)
-        2. URL shorteners
-        Max points: 40 (category ceiling)
+        Extract links from HTML and check for suspicious patterns.
+
+        Detects:
+        1. URL shorteners (bit.ly, tinyurl, etc.)
+        2. URL mismatch (display text != actual href)
+
+        Args:
+            body_html (str): Email body in HTML format
+
+        Scoring:
+            +20 points per suspicious link
+            Max: 40 points (category ceiling)
         """
         if not body_html:
             return
@@ -179,7 +198,12 @@ class ScoringEngine:
     def _extract_domain(self, url: str) -> str:
         """
         Simple domain extraction from URL string.
-        Returns the domain or empty string if not found.
+
+        Args:
+            url (str): URL string (may include protocol, path, query params)
+
+        Returns:
+            str: Extracted domain or empty string if not found
         """
         # Remove protocol
         url = re.sub(r"https?://", "", url)
@@ -191,8 +215,20 @@ class ScoringEngine:
     def _check_social_engineering(self, body_text: str, subject: str):
         """
         Check for explicit requests for sensitive information.
-        Uses text normalization to detect obfuscated keywords.
-        Max points: 40
+
+        Uses text normalization to detect obfuscated keywords like:
+        - "p4ssw0rd" → "password"
+        - Cyrillic 'а' → Latin 'a'
+        - Invisible characters removed
+
+        Args:
+            body_text (str): Email body in plain text
+            subject (str): Email subject line
+
+        Scoring:
+            +40 points if any social engineering keyword detected
+
+        Max points: 40 (triggers once)
         """
         combined_text = body_text + " " + subject
 
@@ -207,10 +243,18 @@ class ScoringEngine:
 
     def _check_urgency_language(self, body_text: str, subject: str):
         """
-        Check for urgency-inducing language using:
-        1. Normalized keyword matching (handles obfuscation)
+        Check for urgency-inducing language using dual detection:
+        1. Normalized keyword matching (handles obfuscation like "URG3NT")
         2. Regex pattern matching (flexible phrase detection)
-        Max points: 15
+
+        Args:
+            body_text (str): Email body in plain text
+            subject (str): Email subject line
+
+        Scoring:
+            +15 points if urgency detected
+
+        Max points: 15 (triggers once)
         """
         combined_text = body_text + " " + subject
 
@@ -236,8 +280,18 @@ class ScoringEngine:
     def _check_attachment_with_urgency(self, attachment_extensions: List[str]):
         """
         Check for combination of attachments + urgency language.
-        This increases suspicion as it's a common phishing pattern.
-        Max points: 10 (bonus)
+
+        This pattern is highly suspicious as attackers often combine:
+        - Malicious attachment (.exe, .zip, etc.)
+        - Urgent language to pressure victims into opening it
+
+        Args:
+            attachment_extensions (List[str]): List of file extensions
+
+        Scoring:
+            +10 points (bonus) if both conditions met
+
+        Max points: 10
         """
         if attachment_extensions and self.urgency_detected:
             self.score += WEIGHTS["attachment_with_urgency"]
@@ -246,6 +300,12 @@ class ScoringEngine:
     def _get_risk_level(self, score: int) -> str:
         """
         Map score to risk level based on thresholds.
+
+        Args:
+            score (int): Total maliciousness score (0-100)
+
+        Returns:
+            str: Risk level ("safe", "suspicious", or "dangerous")
         """
         if THRESHOLDS["safe"][0] <= score <= THRESHOLDS["safe"][1]:
             return "safe"
@@ -257,6 +317,12 @@ class ScoringEngine:
     @staticmethod
     def get_verdict(risk_level: str) -> str:
         """
-        Get the verdict message for a given risk level.
+        Get the Hebrew verdict message for a given risk level.
+
+        Args:
+            risk_level (str): Risk level ("safe", "suspicious", or "dangerous")
+
+        Returns:
+            str: Hebrew verdict message
         """
         return VERDICTS.get(risk_level, "לא ידוע")
