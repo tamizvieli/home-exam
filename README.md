@@ -5,7 +5,6 @@
 A complete security analysis system that scores emails on a 0-100 maliciousness scale with full explainability and zero data leakage to third-party services.
  
 **Developed by:** Tami Zvieli   
-**Assignment:** Upwind Bootcamp - Security Engineering Home Assignment
  
 ---
  
@@ -283,7 +282,6 @@ const API_BASE_URL = 'https://home-exam-1.onrender.com';  // Production
 ## 📁 Project Structure
  
 ```
-home-exam/
 ├── README.md                    # This file
 ├── runtime.txt                  # Python version (3.11.9)
 ├── .gitignore                   # Git exclusions
@@ -305,9 +303,6 @@ home-exam/
 ---
 **Live Demo:**
 - Backend API: https://home-exam-1.onrender.com/docs
-- GitHub Repository: https://github.com/tamizvieli/home-exam
-**Documentation:**
-- Technical Deep-Dive: See `backend/TECHNICAL_DOCUMENTATION_OVERLEAF.tex` (Hebrew)
-- API Reference: Swagger UI at `/docs` endpoint
+- GitHub Repository: https://github.com/tamizvieli/malicious-Email-Scorer
 ---
  
